@@ -1,0 +1,6 @@
+anthropic
+feedparser
+python-dotenv
+ollama
+requests
+beautifulsoup4

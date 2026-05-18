@@ -1,0 +1,15 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Generated output
+digests/
+memory.md
+
+# macOS metadata
+.DS_Store
+
+# IDE
+*.code-workspace
+.vscode/
