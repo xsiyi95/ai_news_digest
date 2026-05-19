@@ -37,8 +37,5 @@ See `skills.md` for implemented and planned agent capabilities.
 - $5 Anthropic credits ≈ 150–250 runs ≈ 5–8 months of daily runs
 
 ## Next Session TODO
-- **Set up GitHub repo** for this project (user has a GitHub account)
-- **Decide on scheduling approach:**
-  - Option A: Remote scheduled agent (Anthropic's cloud) — needs GitHub repo + Anthropic API credits, script must switch from Ollama back to Anthropic API (`claude-haiku-4-5-20251001`)
-  - Option B: Local cron job — runs on Mac with Ollama, free, but Mac must be on
+- **Set up GitHub Actions for daily scheduling** — user wants to automate `main.py` to run every day via GitHub Actions (free, cloud-based, runs even when Mac is off). Workflow file to create: `.github/workflows/daily_digest.yml` with a `cron: '0 8 * * *'` schedule. Secrets needed in GitHub repo settings: `ANTHROPIC_API_KEY`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `DIGEST_RECIPIENT`.
 - **Optional:** Set up MCP connectors to deliver digest to Slack, Notion, or email instead of just saving to a txt file

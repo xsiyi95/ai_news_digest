@@ -1,4 +1,5 @@
 import os
+import logging
 import smtplib
 import feedparser
 import anthropic
@@ -10,6 +11,12 @@ import requests
 from bs4 import BeautifulSoup
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 FEEDS = [
     "https://feeds.arstechnica.com/arstechnica/technology-lab",
@@ -39,24 +46,29 @@ def scrape_article(url: str) -> str:
         paragraphs = soup.find_all("p")
         text = " ".join(p.get_text() for p in paragraphs[:20])
         return text.strip()
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to scrape %s: %s", url, e)
         return ""
 
 def summarize_article(title: str, content: str) -> str:
     client = anthropic.Anthropic()
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=400,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"Article title: {title}\n\n"
-                f"Article content:\n{content[:5000]}\n\n"
-                "Write a concise summary of this article in 2-3 sentences, capturing the key facts and significance."
-            )
-        }]
-    )
-    return response.content[0].text
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"Article title: {title}\n\n"
+                    f"Article content:\n{content[:5000]}\n\n"
+                    "Write a concise summary of this article in 2-3 sentences, capturing the key facts and significance."
+                )
+            }]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.warning("Failed to summarize '%s': %s", title, e)
+        return ""
 
 def fetch_headlines() -> str:
     items = []
@@ -78,20 +90,24 @@ def generate_digest(headlines: str, memory: str) -> str:
         if memory.strip() else ""
     )
 
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"{memory_context}"
-                f"Here are today's AI-related headlines:\n\n{headlines}\n\n"
-                "Write a concise daily digest (5–7 bullet points) covering the most important developments. "
-                "If a story was already covered before, mention it briefly as a follow-up rather than repeating it in full."
-            )
-        }]
-    )
-    return response.content[0].text
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1024,
+            messages=[{
+                "role": "user",
+                "content": (
+                    f"{memory_context}"
+                    f"Here are today's AI-related headlines:\n\n{headlines}\n\n"
+                    "Write a concise daily digest (5–7 bullet points) covering the most important developments. "
+                    "If a story was already covered before, mention it briefly as a follow-up rather than repeating it in full."
+                )
+            }]
+        )
+        return response.content[0].text
+    except Exception as e:
+        logger.error("Failed to generate digest: %s", e)
+        raise
 
 def send_email(digest: str):
     sender = os.environ["GMAIL_USER"]
@@ -104,21 +120,31 @@ def send_email(digest: str):
     msg["To"] = recipient
     msg.attach(MIMEText(digest, "plain"))
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(sender, password)
-        server.sendmail(sender, recipient, msg.as_string())
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(sender, password)
+            server.sendmail(sender, recipient, msg.as_string())
+    except Exception as e:
+        logger.error("Failed to send email: %s", e)
+        raise
 
 if __name__ == "__main__":
-    print("Fetching headlines...")
+    REQUIRED_ENV_VARS = ["ANTHROPIC_API_KEY", "GMAIL_USER", "GMAIL_APP_PASSWORD"]
+    missing = [v for v in REQUIRED_ENV_VARS if not os.environ.get(v)]
+    if missing:
+        logger.error("Missing required environment variables: %s", ", ".join(missing))
+        raise SystemExit(1)
+
+    logger.info("Fetching headlines...")
     headlines = fetch_headlines()
-    
-    print("Loading memory...")
+
+    logger.info("Loading memory...")
     memory = load_memory()
 
-    print("Generating digest...\n")
+    logger.info("Generating digest...")
     digest = generate_digest(headlines, memory)
- 
+
     output_dir = "digests"
     os.makedirs(output_dir, exist_ok=True)
     filename = f"{output_dir}/{date.today()}.txt"
@@ -127,8 +153,7 @@ if __name__ == "__main__":
 
     update_memory(digest)
 
-    # print(digest)
-    print("\nSending email...")
+    logger.info("Sending email...")
     send_email(digest)
 
-    print("Email sent.")
+    logger.info("Email sent.")
